@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-10-08T12:48:38.191Z",
+  "totalQuestions": 840,
+  "totalErrors": 0,
+  "isValid": true,
+  "errors": [],
+  "summary": {
+    "bySection": {
+      "Quantitative Aptitude": 380,
+      "Logical Reasoning": 280,
+      "Verbal Ability": 180
+    },
+    "byDifficulty": {
+      "Easy": 252,
+      "Medium": 420,
+      "Hard": 168
+    },
+    "byModule": {
+      "Number System": 20,
+      "HCF and LCM": 20,
+      "Decimal Fractions": 20,
+      "Simplification": 20,
+      "Percentages": 20,
+      "Profit, Loss and Discounts": 20,
+      "Simple and Compound Interest": 20,
+      "Ratios, Proportions and Variations": 20,
+      "Partnership": 20,
+      "Ages": 20,
+      "Averages": 20,
+      "Alligations and Mixtures": 20,
+      "Time and Work": 20,
+      "Time, Speed and Distance": 20,
+      "Trains, Boats and Streams, Races": 20,
+      "Permutation and Combination": 20,
+      "Probability": 20,
+      "Data Interpretation": 20,
+      "Mensuration": 20,
+      "Blood Relations": 20,
+      "Direction Sense Test": 20,
+      "Series": 20,
+      "Coding and Decoding": 20,
+      "Analogy": 20,
+      "Seating Arrangement": 20,
+      "Data Arrangement": 20,
+      "Clocks": 20,
+      "Calendars": 20,
+      "Syllogisms": 20,
+      "Data Sufficiency": 20,
+      "Cubes": 20,
+      "Visual Reasoning": 20,
+      "Cryptarithmetic": 20,
+      "Articles and Prepositions": 20,
+      "Tenses and Subject-Verb Agreement": 20,
+      "Change of Voice and Speech": 20,
+      "Error Spotting and Sentence Correction": 20,
+      "Synonyms, Antonyms, and Verbal Analogy": 20,
+      "Sentence Completion and One-Word Substitution": 20,
+      "Para Jumbles and Cloze Test": 20,
+      "Reading Comprehension": 20,
+      "Critical Reasoning": 20
+    }
+  }
+}

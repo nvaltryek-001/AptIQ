@@ -1,0 +1,8 @@
+{
+  "name": "AptIQ",
+  "description": "Diagnose. Practice. Improve. Precision placement aptitude assessment, topic-level diagnostic engine, and adaptive training.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
