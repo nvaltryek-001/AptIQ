@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AptitudeQuestion } from '../../types/assessment.ts';
 import { assessmentEngine } from '../../services/assessmentEngine.ts';
 import {
@@ -17,10 +17,20 @@ import {
   X,
   Copy,
   Lock,
-  ShieldAlert
+  ShieldAlert,
+  KeyRound,
+  MailCheck,
+  MailWarning,
+  Send,
+  Check,
+  RefreshCw,
+  Sparkles,
+  Link2,
+  ExternalLink
 } from 'lucide-react';
 import { UserProfile } from '../../services/storageService.ts';
-import { MASTER_ADMIN_EMAIL } from '../../services/authService.ts';
+import { authService, RegisteredAccount } from '../../services/authService.ts';
+import { firebaseAuthService, FirebaseConfig } from '../../services/firebaseAuthService.ts';
 
 interface AdminDashboardProps {
   currentUser?: UserProfile | null;
@@ -31,10 +41,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   currentUser,
   onAuthenticateAdmin
 }) => {
-  const isMasterAdmin =
-    currentUser?.role === 'admin' &&
-    currentUser.email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
+  const isMasterAdmin = false;
 
+  const [activeAdminTab, setActiveAdminTab] = useState<
+    'questions' | 'students' | 'firebase'
+  >('questions');
+
+  // Questions state
   const [questions, setQuestions] = useState<AptitudeQuestion[]>(() =>
     assessmentEngine.getAllQuestions()
   );
@@ -43,6 +56,129 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('All');
   const [showQrModal, setShowQrModal] = useState<boolean>(false);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
+
+  // Students & Verification state
+  const [registeredStudents, setRegisteredStudents] = useState<RegisteredAccount[]>(() =>
+    authService.getRegisteredUsers()
+  );
+  const [studentSearch, setStudentSearch] = useState<string>('');
+
+  // Firebase Email Link Configuration state
+  const [fbConfig, setFbConfig] = useState<Partial<FirebaseConfig>>(() => {
+    return firebaseAuthService.getConfig() || {
+      apiKey: '',
+      authDomain: '',
+      projectId: '',
+      storageBucket: '',
+      messagingSenderId: '',
+      appId: ''
+    };
+  });
+  const [fbJsonPaste, setFbJsonPaste] = useState<string>('');
+  const [fbIsConfigured, setFbIsConfigured] = useState<boolean>(() =>
+    firebaseAuthService.isConfigured()
+  );
+  const [fbSaveNotice, setFbSaveNotice] = useState<string | null>(null);
+  const [fbTestEmail, setFbTestEmail] = useState<string>('');
+  const [fbTestStatus, setFbTestStatus] = useState<string | null>(null);
+
+  // Refresh students list
+  const refreshStudents = () => {
+    setRegisteredStudents(authService.getRegisteredUsers());
+  };
+
+  // Toggle user email verification status
+  const handleToggleVerification = (email: string, currentStatus: boolean) => {
+    authService.setUserVerificationStatus(email, !currentStatus);
+    refreshStudents();
+  };
+
+  // Delete student account
+  const handleDeleteStudent = (email: string, name: string) => {
+    if (confirm(`Are you sure you want to delete the student account for ${name} (${email})?`)) {
+      authService.deleteStudentAccount(email);
+      refreshStudents();
+    }
+  };
+
+  // Parse and auto-fill from JSON config paste
+  const handleParseFbJson = () => {
+    try {
+      // Find JSON object within pasted string (handles const firebaseConfig = {...} or plain JSON)
+      const jsonMatch = fbJsonPaste.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        setFbSaveNotice('✕ Invalid JSON: Could not find a JSON object in the input.');
+        return;
+      }
+
+      // Convert unquoted keys to quoted keys if needed
+      let cleanJson = jsonMatch[0]
+        .replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":')
+        .replace(/,\s*\}/g, '}');
+
+      const parsed = JSON.parse(cleanJson);
+      const updated: Partial<FirebaseConfig> = {
+        apiKey: parsed.apiKey || '',
+        authDomain: parsed.authDomain || '',
+        projectId: parsed.projectId || '',
+        storageBucket: parsed.storageBucket || '',
+        messagingSenderId: parsed.messagingSenderId || '',
+        appId: parsed.appId || ''
+      };
+
+      setFbConfig(updated);
+      setFbSaveNotice('✓ Config parsed! Click "Save Firebase Configuration" to activate.');
+    } catch (err: any) {
+      setFbSaveNotice(`✕ JSON parsing error: ${err.message}`);
+    }
+  };
+
+  // Save Firebase configuration
+  const handleSaveFirebaseConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    setFbSaveNotice(null);
+
+    if (!fbConfig.apiKey || !fbConfig.authDomain || !fbConfig.projectId) {
+      setFbSaveNotice('✕ API Key, Auth Domain, and Project ID are required fields.');
+      return;
+    }
+
+    const fullConfig: FirebaseConfig = {
+      apiKey: fbConfig.apiKey.trim(),
+      authDomain: fbConfig.authDomain.trim(),
+      projectId: fbConfig.projectId.trim(),
+      storageBucket: fbConfig.storageBucket?.trim() || '',
+      messagingSenderId: fbConfig.messagingSenderId?.trim() || '',
+      appId: fbConfig.appId?.trim() || ''
+    };
+
+    const saved = firebaseAuthService.saveConfig(fullConfig);
+    if (saved) {
+      setFbIsConfigured(true);
+      setFbSaveNotice('✓ Firebase configuration saved & activated successfully!');
+      setTimeout(() => setFbSaveNotice(null), 3500);
+    } else {
+      setFbSaveNotice('✕ Failed to save configuration to local storage.');
+    }
+  };
+
+  // Send a test Firebase Email Link
+  const handleSendTestFbLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fbTestEmail.trim()) return;
+    setFbTestStatus('Dispatching Firebase verification link...');
+
+    try {
+      const res = await firebaseAuthService.sendVerificationLink(fbTestEmail.trim());
+      if (res.success) {
+        setFbTestStatus(`✓ Real verification link dispatched to ${fbTestEmail}! Check your inbox.`);
+      } else {
+        setFbTestStatus(`✕ Error: ${res.error || 'Failed to dispatch email link.'}`);
+      }
+    } catch (err: any) {
+      setFbTestStatus(`✕ Error: ${err.message || 'Unknown error'}`);
+    }
+  };
 
   // Filtered question bank
   const filteredQuestions = questions.filter(q => {
@@ -54,6 +190,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const matchesDiff = selectedDifficulty === 'All' || q.difficulty === selectedDifficulty;
     return matchesSearch && matchesSection && matchesDiff;
   });
+
+  // Filtered students list
+  const filteredStudents = registeredStudents.filter(s => {
+    const query = studentSearch.toLowerCase();
+    return (
+      s.name.toLowerCase().includes(query) ||
+      s.email.toLowerCase().includes(query) ||
+      s.college.toLowerCase().includes(query) ||
+      s.branch.toLowerCase().includes(query)
+    );
+  });
+
+  const verifiedStudentsCount = registeredStudents.filter(s => s.isEmailVerified).length;
 
   const handleDeleteQuestion = (id: string) => {
     if (confirm(`Are you sure you want to delete question ${id}?`)) {
@@ -69,7 +218,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  // STRICT ACCESS CONTROL GUARD: Only rajathdrajathd@gmail.com can view Admin Dashboard
+  // STRICT ACCESS CONTROL GUARD
   if (!isMasterAdmin) {
     return (
       <div className="max-w-md mx-auto my-16 p-8 bg-slate-900 border border-slate-800 rounded-2xl text-center space-y-4 shadow-2xl">
@@ -106,10 +255,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <span>CAMPUS FACULTY & ADMIN CONSOLE</span>
           </div>
           <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
-            AptIQ Administration & Question Bank
+            AptIQ Administration & Authentication
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Manage 840 verified placement aptitude questions, student cohorts, and assessment QR access codes.
+            Manage question catalog, Firebase email link verification, and campus student cohorts.
           </p>
         </div>
 
@@ -129,123 +278,499 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4">
           <span className="text-xs text-slate-400 block mb-1">Total Question Bank</span>
           <div className="text-2xl font-bold font-mono text-white">{questions.length}</div>
-          <span className="text-[11px] text-slate-500 mt-1 block">Covering all 42 modules</span>
+          <span className="text-[11px] text-slate-500 mt-1 block">Covering 42 placement modules</span>
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4">
-          <span className="text-xs text-slate-400 block mb-1">Enrolled Students</span>
-          <div className="text-2xl font-bold font-mono text-indigo-400">1,480</div>
-          <span className="text-[11px] text-slate-500 mt-1 block">2026 Graduating Batch</span>
+          <span className="text-xs text-slate-400 block mb-1">Registered Students</span>
+          <div className="text-2xl font-bold font-mono text-indigo-400">{registeredStudents.length}</div>
+          <span className="text-[11px] text-slate-500 mt-1 block">{verifiedStudentsCount} Email Verified</span>
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4">
-          <span className="text-xs text-slate-400 block mb-1">Diagnostic Tests Taken</span>
-          <div className="text-2xl font-bold font-mono text-emerald-400">3,820</div>
-          <span className="text-[11px] text-slate-500 mt-1 block">Avg Score: 64.2%</span>
+          <span className="text-xs text-slate-400 block mb-1">Firebase Email Link</span>
+          <div className={`text-base font-bold font-mono mt-1 truncate ${
+            fbIsConfigured ? 'text-emerald-400' : 'text-amber-400'
+          }`}>
+            {fbIsConfigured ? 'Active & Ready' : 'Configuration Needed'}
+          </div>
+          <span className="text-[11px] text-slate-500 mt-1 block">
+            {fbIsConfigured ? 'Passwordless verification' : 'Connect Firebase Project'}
+          </span>
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4">
-          <span className="text-xs text-slate-400 block mb-1">Campus Weakest Topic</span>
-          <div className="text-2xl font-bold font-mono text-rose-400">Percentages</div>
-          <span className="text-[11px] text-slate-500 mt-1 block">Followed by Time & Work</span>
+          <span className="text-xs text-slate-400 block mb-1">Security Status</span>
+          <div className="text-base font-bold font-mono text-indigo-400 mt-1">Master Protected</div>
+          <span className="text-[11px] text-slate-500 mt-1 block">Single Admin Enforced</span>
         </div>
       </div>
 
-      {/* Question Bank Manager Section */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h2 className="text-base font-bold text-white flex items-center gap-2">
-            <Database className="w-4 h-4 text-indigo-400" />
-            <span>Question Bank Catalog ({filteredQuestions.length} Matches)</span>
-          </h2>
+      {/* Admin Sub-navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-1 overflow-x-auto">
+        <button
+          onClick={() => setActiveAdminTab('questions')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-2 whitespace-nowrap ${
+            activeAdminTab === 'questions'
+              ? 'bg-indigo-600 text-white'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Database className="w-3.5 h-3.5" />
+          <span>Question Bank ({questions.length})</span>
+        </button>
 
-          {/* Search & Filter Bar */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search question, module or ID..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="pl-8 pr-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:ring-1 focus:ring-indigo-500 outline-none w-52"
-              />
+        <button
+          onClick={() => setActiveAdminTab('students')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-2 whitespace-nowrap ${
+            activeAdminTab === 'students'
+              ? 'bg-indigo-600 text-white'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>Student Accounts ({registeredStudents.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveAdminTab('firebase')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-2 whitespace-nowrap ${
+            activeAdminTab === 'firebase'
+              ? 'bg-amber-600 text-white shadow-sm'
+              : 'text-amber-400 hover:text-amber-300 hover:bg-amber-950/40'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>Firebase Email Link Verification</span>
+        </button>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* TAB 1: QUESTION BANK CATALOG */}
+      {/* ========================================================================= */}
+      {activeAdminTab === 'questions' && (
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <Database className="w-4 h-4 text-indigo-400" />
+              <span>Question Bank Catalog ({filteredQuestions.length} Matches)</span>
+            </h2>
+
+            {/* Search & Filter Bar */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search question, module or ID..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="pl-8 pr-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:ring-1 focus:ring-indigo-500 outline-none w-52"
+                />
+              </div>
+
+              <select
+                value={selectedSection}
+                onChange={e => setSelectedSection(e.target.value)}
+                className="bg-slate-950 border border-slate-700 text-slate-300 text-xs rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-indigo-500 outline-none"
+              >
+                <option value="All">All Sections</option>
+                <option value="Quantitative Aptitude">Quantitative Aptitude</option>
+                <option value="Logical Reasoning">Logical Reasoning</option>
+                <option value="Verbal Ability">Verbal Ability</option>
+              </select>
+
+              <select
+                value={selectedDifficulty}
+                onChange={e => setSelectedDifficulty(e.target.value)}
+                className="bg-slate-950 border border-slate-700 text-slate-300 text-xs rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-indigo-500 outline-none"
+              >
+                <option value="All">All Difficulties</option>
+                <option value="Easy">Easy</option>
+                <option value="Medium">Medium</option>
+                <option value="Hard">Hard</option>
+              </select>
             </div>
+          </div>
 
-            <select
-              value={selectedSection}
-              onChange={e => setSelectedSection(e.target.value)}
-              className="bg-slate-950 border border-slate-700 text-slate-300 text-xs rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-indigo-500 outline-none"
-            >
-              <option value="All">All Sections</option>
-              <option value="Quantitative Aptitude">Quantitative Aptitude</option>
-              <option value="Logical Reasoning">Logical Reasoning</option>
-              <option value="Verbal Ability">Verbal Ability</option>
-            </select>
-
-            <select
-              value={selectedDifficulty}
-              onChange={e => setSelectedDifficulty(e.target.value)}
-              className="bg-slate-950 border border-slate-700 text-slate-300 text-xs rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-indigo-500 outline-none"
-            >
-              <option value="All">All Difficulties</option>
-              <option value="Easy">Easy</option>
-              <option value="Medium">Medium</option>
-              <option value="Hard">Hard</option>
-            </select>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-800 text-slate-400">
+                  <th className="pb-3 font-semibold">ID</th>
+                  <th className="pb-3 font-semibold">Module</th>
+                  <th className="pb-3 font-semibold">Difficulty</th>
+                  <th className="pb-3 font-semibold">Question Snippet</th>
+                  <th className="pb-3 font-semibold">Correct Answer</th>
+                  <th className="pb-3 font-semibold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-mono">
+                {filteredQuestions.slice(0, 25).map(q => (
+                  <tr key={q.id} className="hover:bg-slate-900/40">
+                    <td className="py-3 text-indigo-400 font-bold">{q.id}</td>
+                    <td className="py-3 font-sans text-slate-200">{q.module}</td>
+                    <td className="py-3">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                          q.difficulty === 'Easy'
+                            ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
+                            : q.difficulty === 'Medium'
+                            ? 'bg-amber-950 text-amber-400 border border-amber-800/60'
+                            : 'bg-rose-950 text-rose-400 border border-rose-800/60'
+                        }`}
+                      >
+                        {q.difficulty}
+                      </span>
+                    </td>
+                    <td className="py-3 font-sans text-slate-300 max-w-xs truncate">
+                      {q.question}
+                    </td>
+                    <td className="py-3 text-emerald-300 font-sans font-medium">{q.correctAnswer}</td>
+                    <td className="py-3 text-right">
+                      <button
+                        onClick={() => handleDeleteQuestion(q.id)}
+                        className="p-1.5 rounded hover:bg-rose-950 text-slate-400 hover:text-rose-400 transition-colors"
+                        title="Delete Question"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
+      )}
 
-        {/* Questions Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-800 text-slate-400">
-                <th className="pb-3 font-semibold">ID</th>
-                <th className="pb-3 font-semibold">Module</th>
-                <th className="pb-3 font-semibold">Difficulty</th>
-                <th className="pb-3 font-semibold">Question Snippet</th>
-                <th className="pb-3 font-semibold">Correct Answer</th>
-                <th className="pb-3 font-semibold text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono">
-              {filteredQuestions.slice(0, 25).map(q => (
-                <tr key={q.id} className="hover:bg-slate-900/40">
-                  <td className="py-3 text-indigo-400 font-bold">{q.id}</td>
-                  <td className="py-3 font-sans text-slate-200">{q.module}</td>
-                  <td className="py-3">
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                        q.difficulty === 'Easy'
-                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
-                          : q.difficulty === 'Medium'
-                          ? 'bg-amber-950 text-amber-400 border border-amber-800/60'
-                          : 'bg-rose-950 text-rose-400 border border-rose-800/60'
-                      }`}
-                    >
-                      {q.difficulty}
-                    </span>
-                  </td>
-                  <td className="py-3 font-sans text-slate-300 max-w-xs truncate">
-                    {q.question}
-                  </td>
-                  <td className="py-3 text-emerald-300 font-sans font-medium">{q.correctAnswer}</td>
-                  <td className="py-3 text-right">
-                    <button
-                      onClick={() => handleDeleteQuestion(q.id)}
-                      className="p-1.5 rounded hover:bg-rose-950 text-slate-400 hover:text-rose-400 transition-colors"
-                      title="Delete Question"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </td>
+      {/* ========================================================================= */}
+      {/* TAB 2: REGISTERED STUDENTS & EMAIL VERIFICATION */}
+      {/* ========================================================================= */}
+      {activeAdminTab === 'students' && (
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <Users className="w-4 h-4 text-indigo-400" />
+                <span>Student Accounts & Verification Status</span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Monitor student registrations, inspect verified email status, and manage accounts.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search student or email..."
+                  value={studentSearch}
+                  onChange={e => setStudentSearch(e.target.value)}
+                  className="pl-8 pr-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:ring-1 focus:ring-indigo-500 outline-none w-56"
+                />
+              </div>
+              <button
+                onClick={refreshStudents}
+                className="p-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                title="Refresh Students"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-800 text-slate-400">
+                  <th className="pb-3 font-semibold">Student Name</th>
+                  <th className="pb-3 font-semibold">Email</th>
+                  <th className="pb-3 font-semibold">College & Branch</th>
+                  <th className="pb-3 font-semibold">Batch</th>
+                  <th className="pb-3 font-semibold">Verification Status</th>
+                  <th className="pb-3 font-semibold text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {filteredStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-500 text-xs">
+                      No student accounts found matching your query.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStudents.map(student => (
+                    <tr key={student.id} className="hover:bg-slate-900/40">
+                      <td className="py-3 font-semibold text-white">
+                        {student.name}
+                      </td>
+                      <td className="py-3 font-mono text-slate-300">
+                        {student.email}
+                      </td>
+                      <td className="py-3 text-slate-300">
+                        <div>{student.college}</div>
+                        <div className="text-[10px] text-slate-500">{student.branch}</div>
+                      </td>
+                      <td className="py-3 font-mono text-slate-400">
+                        {student.graduationYear}
+                      </td>
+                      <td className="py-3">
+                        {student.isEmailVerified ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/60">
+                            <MailCheck className="w-3 h-3" />
+                            <span>Verified</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-400 border border-amber-800/60">
+                            <MailWarning className="w-3 h-3" />
+                            <span>Pending Verification</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleToggleVerification(student.email, student.isEmailVerified || false)}
+                            className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                              student.isEmailVerified
+                                ? 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                                : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                            }`}
+                            title={student.isEmailVerified ? 'Mark as Unverified' : 'Force Verify Email'}
+                          >
+                            {student.isEmailVerified ? 'Mark Unverified' : 'Verify Email'}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteStudent(student.email, student.name)}
+                            className="p-1.5 rounded hover:bg-rose-950 text-slate-400 hover:text-rose-400 transition-colors"
+                            title="Delete Student"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 3: FIREBASE EMAIL LINK AUTHENTICATION CONFIGURATION */}
+      {/* ========================================================================= */}
+      {activeAdminTab === 'firebase' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Firebase Configuration Form */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span>Firebase Project Credentials</span>
+              </h2>
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
+                  fbIsConfigured
+                    ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
+                    : 'bg-amber-950 text-amber-400 border border-amber-800/60'
+                }`}
+              >
+                {fbIsConfigured ? 'Connected & Active' : 'Setup Required'}
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Firebase provides passwordless email link verification. Students receive an action link in their email which verifies and logs them in with a single click.
+            </p>
+
+            {/* Quick JSON Paste Accordion/Helper */}
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+              <label className="block text-[11px] font-semibold text-slate-300">
+                ⚡ Quick Auto-Fill: Paste Firebase Config Object
+              </label>
+              <textarea
+                rows={3}
+                placeholder={'Paste { apiKey: "AIza...", authDomain: "...", projectId: "..." } from Firebase Console'}
+                value={fbJsonPaste}
+                onChange={e => setFbJsonPaste(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono text-[10px] outline-none focus:border-amber-500"
+              />
+              <button
+                type="button"
+                onClick={handleParseFbJson}
+                disabled={!fbJsonPaste.trim()}
+                className="px-3 py-1 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded text-[11px] font-medium transition-colors"
+              >
+                Parse & Auto-Fill Fields Below
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveFirebaseConfig} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">API Key (apiKey) *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="AIzaSy..."
+                  value={fbConfig.apiKey || ''}
+                  onChange={e => setFbConfig({ ...fbConfig, apiKey: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs placeholder-slate-500 outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Auth Domain *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="your-project.firebaseapp.com"
+                    value={fbConfig.authDomain || ''}
+                    onChange={e => setFbConfig({ ...fbConfig, authDomain: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs placeholder-slate-500 outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Project ID *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="your-project-id"
+                    value={fbConfig.projectId || ''}
+                    onChange={e => setFbConfig({ ...fbConfig, projectId: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs placeholder-slate-500 outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">App ID</label>
+                  <input
+                    type="text"
+                    placeholder="1:123456789:web:abcdef..."
+                    value={fbConfig.appId || ''}
+                    onChange={e => setFbConfig({ ...fbConfig, appId: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs placeholder-slate-500 outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Messaging Sender ID</label>
+                  <input
+                    type="text"
+                    placeholder="123456789"
+                    value={fbConfig.messagingSenderId || ''}
+                    onChange={e => setFbConfig({ ...fbConfig, messagingSenderId: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs placeholder-slate-500 outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-between">
+                <span className="text-xs text-amber-400 font-medium">
+                  {fbSaveNotice || ''}
+                </span>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold transition-colors shadow-lg shadow-amber-600/20"
+                >
+                  Save Firebase Configuration
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Test Link Dispatcher & Instructions */}
+          <div className="space-y-6">
+            {/* Test Link Card */}
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 space-y-4">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <Send className="w-4 h-4 text-emerald-400" />
+                <span>Test Firebase Email Link Dispatch</span>
+              </h2>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Send a real Firebase verification email link to any recipient to verify that your Firebase Auth project is properly linked.
+              </p>
+
+              <form onSubmit={handleSendTestFbLink} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Recipient Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="student@example.com"
+                    value={fbTestEmail}
+                    onChange={e => setFbTestEmail(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono placeholder-slate-500 outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={!fbIsConfigured}
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/20"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Send Real Verification Link</span>
+                </button>
+
+                {fbTestStatus && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-mono border ${
+                      fbTestStatus.startsWith('✓')
+                        ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300'
+                        : 'bg-rose-950/60 border-rose-800 text-rose-300'
+                    }`}
+                  >
+                    {fbTestStatus}
+                  </div>
+                )}
+              </form>
+            </div>
+
+            {/* Setup Guide Card */}
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 space-y-3 text-xs">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-white flex items-center gap-2">
+                  <Link2 className="w-4 h-4 text-amber-400" />
+                  <span>Firebase Console Setup Checklist</span>
+                </h3>
+                <a
+                  href="https://console.firebase.google.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-amber-400 hover:text-amber-300 flex items-center gap-1 text-[11px] underline"
+                >
+                  <span>Open Firebase Console</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+
+              <ol className="list-decimal list-inside space-y-2 text-slate-300 leading-relaxed">
+                <li>
+                  In your Firebase Console, navigate to <strong>Build &gt; Authentication</strong>.
+                </li>
+                <li>
+                  Under <strong>Sign-in method</strong>, click on <strong>Email/Password</strong>.
+                </li>
+                <li>
+                  Turn on <strong>Email link (passwordless sign-in)</strong> and click <strong>Save</strong>.
+                </li>
+                <li>
+                  Under <strong>Settings &gt; Authorized domains</strong>, make sure <code className="text-amber-300 bg-slate-950 px-1.5 py-0.5 rounded">localhost</code> is listed (it is by default).
+                </li>
+                <li>
+                  Go to <strong>Project Settings (gear icon) &gt; General &gt; Your apps &gt; Web App (&lt;/&gt;)</strong>, copy the config object, and paste it on the left!
+                </li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* QR Code Modal for Assessment */}
       {showQrModal && (
@@ -268,7 +793,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               Display this QR code in classrooms or labs. Students can scan with their phone camera to instantly launch the AptIQ diagnostic assessment.
             </p>
 
-            {/* Visual SVG QR representation */}
             <div className="flex justify-center p-4 bg-white rounded-xl">
               <svg className="w-48 h-48" viewBox="0 0 100 100">
                 <path fill="#0f172a" d="M10,10 h30 v30 h-30 z M15,15 v20 h20 v-20 z M20,20 h10 v10 h-10 z" />

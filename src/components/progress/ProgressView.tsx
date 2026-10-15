@@ -18,10 +18,37 @@ interface ProgressViewProps {
 }
 
 export const ProgressView: React.FC<ProgressViewProps> = ({ attempts, onTakeTest }) => {
+  const hasAttempts = attempts.length > 0;
+  const latestAttempt = attempts[0];
+  const firstAttempt = attempts[attempts.length - 1];
   const totalTests = attempts.length;
-  const latestScore = attempts[0]?.percentage || 72;
-  const firstScore = attempts[attempts.length - 1]?.percentage || 38;
+  const latestScore = latestAttempt?.percentage ?? 0;
+  const firstScore = firstAttempt?.percentage ?? 0;
   const totalGrowth = latestScore - firstScore;
+
+  // Topics from latest attempt
+  const sortedTopics = latestAttempt?.topicBreakdown ? [...latestAttempt.topicBreakdown].sort((a, b) => b.percentage - a.percentage) : [];
+  const bestTopic = sortedTopics[0];
+  const weakestTopic = sortedTopics.length > 0 ? sortedTopics[sortedTopics.length - 1] : null;
+
+  // Comparative topic growth if at least 2 attempts exist
+  const topicDeltas = (attempts.length >= 2 && firstAttempt && latestAttempt)
+    ? latestAttempt.topicBreakdown
+        .map(latestT => {
+          const firstT = firstAttempt.topicBreakdown.find(f => f.module === latestT.module);
+          if (!firstT) return null;
+          return {
+            mod: latestT.module,
+            sec: latestT.section,
+            before: firstT.percentage,
+            after: latestT.percentage,
+            diff: latestT.percentage - firstT.percentage
+          };
+        })
+        .filter((d): d is NonNullable<typeof d> => d !== null)
+    : [];
+
+  const mostImprovedTopic = [...topicDeltas].sort((a, b) => b.diff - a.diff)[0];
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
@@ -45,81 +72,122 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ attempts, onTakeTest
           className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-2 transition-colors shrink-0 shadow-sm"
         >
           <Target className="w-4 h-4" />
-          <span>Launch Reassessment</span>
+          <span>{hasAttempts ? 'Launch Reassessment' : 'Start First Diagnostic'}</span>
         </button>
       </div>
 
-      {/* Highlights: Best Topic, Weakest Topic, Most Improved */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 space-y-2">
-          <span className="text-xs text-emerald-400 font-semibold uppercase tracking-wider block">
-            Best Performing Topic
-          </span>
-          <div className="text-xl font-bold text-white">Probability</div>
-          <p className="text-xs text-slate-400 font-mono">86% Accuracy · Average Time 48s</p>
+      {!hasAttempts ? (
+        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center space-y-5">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 mx-auto flex items-center justify-center">
+            <BarChart2 className="w-8 h-8" />
+          </div>
+          <div className="max-w-md mx-auto space-y-2">
+            <h2 className="text-xl font-bold text-white">No Growth Data Yet</h2>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Complete your initial diagnostic test to start tracking your aptitude growth, speed improvements, and topic mastery trajectory.
+            </p>
+          </div>
+          <button
+            onClick={onTakeTest}
+            className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all inline-flex items-center gap-2 shadow-lg shadow-indigo-600/20"
+          >
+            <Target className="w-4 h-4" />
+            <span>Take Diagnostic Assessment</span>
+          </button>
         </div>
+      ) : (
+        <>
+          {/* Highlights: Best Topic, Weakest Topic, Most Improved */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 space-y-2">
+              <span className="text-xs text-emerald-400 font-semibold uppercase tracking-wider block">
+                Best Performing Topic
+              </span>
+              <div className="text-xl font-bold text-white">{bestTopic ? bestTopic.module : '--'}</div>
+              <p className="text-xs text-slate-400 font-mono">
+                {bestTopic ? `${bestTopic.percentage}% Accuracy · Avg Time ${bestTopic.averageTime || 45}s` : 'Take test to evaluate'}
+              </p>
+            </div>
 
-        <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 space-y-2">
-          <span className="text-xs text-rose-400 font-semibold uppercase tracking-wider block">
-            Current Weakest Topic
-          </span>
-          <div className="text-xl font-bold text-white">Percentages</div>
-          <p className="text-xs text-slate-400 font-mono">31% Accuracy · Average Time 82s</p>
-        </div>
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 space-y-2">
+              <span className="text-xs text-rose-400 font-semibold uppercase tracking-wider block">
+                Current Weakest Topic
+              </span>
+              <div className="text-xl font-bold text-white">{weakestTopic ? weakestTopic.module : '--'}</div>
+              <p className="text-xs text-slate-400 font-mono">
+                {weakestTopic ? `${weakestTopic.percentage}% Accuracy · Needs Training` : 'Take test to evaluate'}
+              </p>
+            </div>
 
-        <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 space-y-2">
-          <span className="text-xs text-indigo-400 font-semibold uppercase tracking-wider block">
-            Most Improved Topic
-          </span>
-          <div className="text-xl font-bold text-white">Time and Work</div>
-          <p className="text-xs text-slate-400 font-mono">38% → 76% (+38 percentage points)</p>
-        </div>
-      </div>
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 space-y-2">
+              <span className="text-xs text-indigo-400 font-semibold uppercase tracking-wider block">
+                Most Improved Topic
+              </span>
+              <div className="text-xl font-bold text-white">
+                {mostImprovedTopic ? mostImprovedTopic.mod : (totalTests === 1 ? 'Baseline Set' : '--')}
+              </div>
+              <p className="text-xs text-slate-400 font-mono">
+                {mostImprovedTopic
+                  ? `${mostImprovedTopic.before}% → ${mostImprovedTopic.after}% (+${mostImprovedTopic.diff}%)`
+                  : totalTests === 1
+                  ? 'Complete retest after training'
+                  : 'Pending multiple tests'}
+              </p>
+            </div>
+          </div>
 
-      {/* Growth Comparison Table */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold text-white flex items-center gap-2">
-            <BarChart2 className="w-4 h-4 text-indigo-400" />
-            <span>Before vs After Topic Mastery Delta</span>
-          </h2>
-          <span className="text-xs font-mono text-emerald-400 font-bold">
-            Average Gain: +39.7%
-          </span>
-        </div>
+          {/* Growth Comparison Table */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <BarChart2 className="w-4 h-4 text-indigo-400" />
+                <span>Before vs After Topic Mastery Delta</span>
+              </h2>
+              {topicDeltas.length > 0 && (
+                <span className="text-xs font-mono text-emerald-400 font-bold">
+                  {totalGrowth >= 0 ? `+${totalGrowth}%` : `${totalGrowth}%`} Overall Delta
+                </span>
+              )}
+            </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-800 text-slate-400">
-                <th className="pb-3 font-semibold">Aptitude Module</th>
-                <th className="pb-3 font-semibold">Section</th>
-                <th className="pb-3 font-semibold">Initial Diagnostic</th>
-                <th className="pb-3 font-semibold">Post-Training Test</th>
-                <th className="pb-3 font-semibold text-right">Net Improvement</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono">
-              {[
-                { mod: 'Percentages', sec: 'Quantitative Aptitude', before: 25, after: 72, diff: 47 },
-                { mod: 'Time and Work', sec: 'Quantitative Aptitude', before: 38, after: 76, diff: 38 },
-                { mod: 'Seating Arrangement', sec: 'Logical Reasoning', before: 45, after: 79, diff: 34 },
-                { mod: 'Direction Sense Test', sec: 'Logical Reasoning', before: 50, after: 90, diff: 40 },
-                { mod: 'Subject-Verb Agreement', sec: 'Verbal Ability', before: 55, after: 88, diff: 33 },
-                { mod: 'Profit, Loss and Discounts', sec: 'Quantitative Aptitude', before: 40, after: 85, diff: 45 }
-              ].map((row, i) => (
-                <tr key={i} className="hover:bg-slate-900/40">
-                  <td className="py-3 font-sans font-medium text-slate-200">{row.mod}</td>
-                  <td className="py-3 text-slate-400 font-sans">{row.sec}</td>
-                  <td className="py-3 text-slate-400">{row.before}%</td>
-                  <td className="py-3 font-bold text-white">{row.after}%</td>
-                  <td className="py-3 text-right font-bold text-emerald-400">+{row.diff}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            {topicDeltas.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-slate-400">
+                      <th className="pb-3 font-semibold">Aptitude Module</th>
+                      <th className="pb-3 font-semibold">Section</th>
+                      <th className="pb-3 font-semibold">Initial Diagnostic</th>
+                      <th className="pb-3 font-semibold">Latest Test</th>
+                      <th className="pb-3 font-semibold text-right">Net Improvement</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 font-mono">
+                    {topicDeltas.map((row, i) => (
+                      <tr key={i} className="hover:bg-slate-900/40">
+                        <td className="py-3 font-sans font-medium text-slate-200">{row.mod}</td>
+                        <td className="py-3 text-slate-400 font-sans">{row.sec}</td>
+                        <td className="py-3 text-slate-400">{row.before}%</td>
+                        <td className="py-3 font-bold text-white">{row.after}%</td>
+                        <td className={`py-3 text-right font-bold ${row.diff >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {row.diff >= 0 ? `+${row.diff}%` : `${row.diff}%`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="bg-slate-950/60 p-6 rounded-xl border border-slate-800/80 text-center space-y-2">
+                <span className="text-xs font-semibold text-indigo-300 block">Baseline Assessment Recorded</span>
+                <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
+                  You have completed 1 diagnostic assessment. Practice recommended training modules and take a reassessment to compare your Before vs After mastery metrics.
+                </p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 };

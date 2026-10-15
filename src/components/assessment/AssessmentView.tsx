@@ -224,13 +224,14 @@ export const AssessmentView: React.FC<AssessmentViewProps> = ({ size, onFinish, 
     recordQuestionTime();
 
     const user = storageService.getUser();
+    const userId = user ? user.id : 'student';
     const totalTimeSpent = Math.max(
       1,
       elapsedSeconds || Math.round((Date.now() - startTimeRef.current) / 1000)
     );
 
     const attempt = assessmentEngine.scoreAssessment(
-      user.id,
+      userId,
       size,
       startTimeRef.current,
       totalTimeSpent,

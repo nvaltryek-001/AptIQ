@@ -85,9 +85,13 @@ function makeDistinctOptions(correct: string, rawDistractors: string[]): [string
     counter++;
   }
 
-  const optsArray = Array.from(chosen);
-  // Put correct in deterministic or pseudo-shuffled slot without losing it
-  return optsArray.slice(0, 4) as [string, string, string, string];
+  const optsArray = Array.from(chosen).slice(0, 4);
+  // Pseudo-randomly shuffle options so correct answer is not always first
+  for (let i = optsArray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [optsArray[i], optsArray[j]] = [optsArray[j], optsArray[i]];
+  }
+  return optsArray as [string, string, string, string];
 }
 
 // Generate exactly 20 distinct questions for each of the 42 modules

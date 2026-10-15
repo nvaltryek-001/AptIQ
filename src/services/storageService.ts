@@ -10,10 +10,12 @@ export interface UserProfile {
   graduationYear: number;
   targetCompany?: string;
   targetRole?: string;
+  isEmailVerified?: boolean;
 }
 
 export interface InProgressSession {
   assessmentId: string;
+  userId?: string;
   blueprintSize: AssessmentSize;
   startedAt: number; // timestamp ms
   durationSeconds: number;
@@ -21,6 +23,16 @@ export interface InProgressSession {
   questionIds: string[];
   currentQuestionIndex: number;
   answers: Record<string, StudentAnswer>;
+}
+
+export interface ModuleTrainingProgress {
+  module: string;
+  completedStages: number[];
+  testAttended: boolean;
+  score: number;
+  placementTarget: number;
+  cycle: number; // 0 for initial attempt, increments on retest for different questions
+  lastAttemptAt?: string;
 }
 
 const STORAGE_KEYS = {
@@ -39,7 +51,8 @@ export const defaultStudentUser: UserProfile = {
   branch: 'Computer Science & Engineering',
   graduationYear: 2026,
   targetCompany: 'Google / Amazon / TCS Digital',
-  targetRole: 'Software Development Engineer'
+  targetRole: 'Software Development Engineer',
+  isEmailVerified: true
 };
 
 export const defaultAdminUser: UserProfile = {
@@ -49,17 +62,18 @@ export const defaultAdminUser: UserProfile = {
   role: 'admin',
   college: 'AptIQ Campus Administration',
   branch: 'Training & Placement Division',
-  graduationYear: 2020
+  graduationYear: 2020,
+  isEmailVerified: true
 };
 
 // Storage helpers
 export const storageService = {
-  getUser(): UserProfile {
+  getUser(): UserProfile | null {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.USER);
-      return data ? JSON.parse(data) : defaultStudentUser;
+      return data ? JSON.parse(data) : null;
     } catch {
-      return defaultStudentUser;
+      return null;
     }
   },
 
@@ -74,139 +88,156 @@ export const storageService = {
   clearUser() {
     try {
       localStorage.removeItem(STORAGE_KEYS.USER);
+      this.clearCurrentSession();
     } catch (e) {
       console.error('Failed to clear user', e);
     }
   },
 
-  getAttempts(): AssessmentAttempt[] {
+  getAttempts(userId?: string): AssessmentAttempt[] {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.ATTEMPTS);
-      if (data) return JSON.parse(data);
+      const activeUser = this.getUser();
+      const targetUserId = userId || activeUser?.id;
+      if (!targetUserId) return [];
 
-      // Seed realistic initial demo attempts
-      const sampleAttempts: AssessmentAttempt[] = [
-        {
-          id: 'attempt_demo_current',
-          userId: 'usr_student_01',
-          blueprintSize: 30,
-          title: 'Diagnostic Quick Sprint (30 Questions)',
-          startedAt: new Date(Date.now() - 3600000).toISOString(),
-          submittedAt: new Date(Date.now() - 1800000).toISOString(),
-          totalTimeSpentSeconds: 1680,
-          totalQuestions: 30,
-          score: 21,
-          percentage: 70,
-          correctCount: 21,
-          wrongCount: 7,
-          unansweredCount: 2,
-          accuracy: 75,
-          averageTimePerQuestion: 56,
-          sectionBreakdown: [
-            { section: 'Quantitative Aptitude', score: 6, total: 10, percentage: 60, accuracy: 67, timeSpentSeconds: 620 },
-            { section: 'Logical Reasoning', score: 8, total: 10, percentage: 80, accuracy: 80, timeSpentSeconds: 540 },
-            { section: 'Verbal Ability', score: 7, total: 10, percentage: 70, accuracy: 78, timeSpentSeconds: 520 }
-          ],
-          topicBreakdown: [
-            {
-              module: 'Percentages',
-              topic: 'Basic Percentage',
-              section: 'Quantitative Aptitude',
-              score: 1,
-              total: 3,
-              percentage: 33,
-              accuracy: 33,
-              averageTime: 78,
-              status: 'Critical',
-              recommendation: 'Start Percentages Foundation Training & solve 10 guided basic practice problems.'
-            },
-            {
-              module: 'Time and Work',
-              topic: 'Individual Work Rates',
-              section: 'Quantitative Aptitude',
-              score: 1,
-              total: 2,
-              percentage: 50,
-              accuracy: 50,
-              averageTime: 82,
-              status: 'Weak',
-              recommendation: 'Review formula sheets and intermediate speed drills for Time and Work.'
-            },
-            {
-              module: 'Seating Arrangement',
-              topic: 'Linear Row Arrangement',
-              section: 'Logical Reasoning',
-              score: 2,
-              total: 3,
-              percentage: 67,
-              accuracy: 67,
-              averageTime: 62,
-              status: 'Average',
-              recommendation: 'Solve 10 timed practice questions to push accuracy above 80%.'
-            },
-            {
-              module: 'Probability',
-              topic: 'Two Dice Sum',
-              section: 'Quantitative Aptitude',
-              score: 2,
-              total: 2,
-              percentage: 100,
-              accuracy: 100,
-              averageTime: 44,
-              status: 'Excellent',
-              recommendation: 'Mastery achieved. Maintain speed with periodic mock tests.'
-            }
-          ],
-          answers: {
-            'QA-PCT-001': { questionId: 'QA-PCT-001', selectedOption: '600', isMarkedForReview: false, timeSpentSeconds: 45 },
-            'QA-TWR-001': { questionId: 'QA-TWR-001', selectedOption: '8 days', isMarkedForReview: false, timeSpentSeconds: 60 }
-          },
-          questionIds: [
-            'QA-PCT-001', 'QA-PCT-002', 'QA-TWR-001', 'LR-BLD-001', 'LR-DIR-001', 'VA-ART-001', 'VA-TNS-001'
-          ]
-        },
-        {
-          id: 'attempt_demo_previous',
-          userId: 'usr_student_01',
-          blueprintSize: 30,
-          title: 'Initial Baseline Diagnostic (30 Questions)',
-          startedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-          submittedAt: new Date(Date.now() - 86400000 * 3 + 1800000).toISOString(),
-          totalTimeSpentSeconds: 1750,
-          totalQuestions: 30,
-          score: 15,
-          percentage: 50,
-          correctCount: 15,
-          wrongCount: 12,
-          unansweredCount: 3,
-          accuracy: 55,
-          averageTimePerQuestion: 58,
-          sectionBreakdown: [
-            { section: 'Quantitative Aptitude', score: 4, total: 10, percentage: 40, accuracy: 44, timeSpentSeconds: 700 },
-            { section: 'Logical Reasoning', score: 6, total: 10, percentage: 60, accuracy: 60, timeSpentSeconds: 580 },
-            { section: 'Verbal Ability', score: 5, total: 10, percentage: 50, accuracy: 56, timeSpentSeconds: 470 }
-          ],
-          topicBreakdown: [
-            {
-              module: 'Percentages',
-              topic: 'Basic Percentage',
-              section: 'Quantitative Aptitude',
-              score: 0,
-              total: 3,
-              percentage: 0,
-              accuracy: 0,
-              averageTime: 92,
-              status: 'Critical',
-              recommendation: 'Start Percentages Foundation Training & solve 10 guided basic practice problems.'
-            }
-          ],
-          answers: {},
-          questionIds: ['QA-PCT-001']
+      const raw = localStorage.getItem(STORAGE_KEYS.ATTEMPTS);
+      let allAttempts: AssessmentAttempt[] = [];
+      if (raw) {
+        try {
+          allAttempts = JSON.parse(raw);
+        } catch {
+          allAttempts = [];
         }
-      ];
+      }
 
-      localStorage.setItem(STORAGE_KEYS.ATTEMPTS, JSON.stringify(sampleAttempts));
-      return sampleAttempts;
+      // Seed realistic initial demo attempts strictly for the default demo account if no attempts exist
+      if ((targetUserId === 'usr_student_01' || targetUserId === 'usr_student_demo') && allAttempts.length === 0) {
+        const sampleAttempts: AssessmentAttempt[] = [
+          {
+            id: 'attempt_demo_current',
+            userId: 'usr_student_01',
+            blueprintSize: 30,
+            title: 'Diagnostic Quick Sprint (30 Questions)',
+            startedAt: new Date(Date.now() - 3600000).toISOString(),
+            submittedAt: new Date(Date.now() - 1800000).toISOString(),
+            totalTimeSpentSeconds: 1680,
+            totalQuestions: 30,
+            score: 21,
+            percentage: 70,
+            correctCount: 21,
+            wrongCount: 7,
+            unansweredCount: 2,
+            accuracy: 75,
+            averageTimePerQuestion: 56,
+            sectionBreakdown: [
+              { section: 'Quantitative Aptitude', score: 6, total: 10, percentage: 60, accuracy: 67, timeSpentSeconds: 620 },
+              { section: 'Logical Reasoning', score: 8, total: 10, percentage: 80, accuracy: 80, timeSpentSeconds: 540 },
+              { section: 'Verbal Ability', score: 7, total: 10, percentage: 70, accuracy: 78, timeSpentSeconds: 520 }
+            ],
+            topicBreakdown: [
+              {
+                module: 'Percentages',
+                topic: 'Basic Percentage',
+                section: 'Quantitative Aptitude',
+                score: 1,
+                total: 3,
+                percentage: 33,
+                accuracy: 33,
+                averageTime: 78,
+                status: 'Critical',
+                recommendation: 'Start Percentages Foundation Training & solve 10 guided basic practice problems.'
+              },
+              {
+                module: 'Time and Work',
+                topic: 'Individual Work Rates',
+                section: 'Quantitative Aptitude',
+                score: 1,
+                total: 2,
+                percentage: 50,
+                accuracy: 50,
+                averageTime: 82,
+                status: 'Weak',
+                recommendation: 'Review formula sheets and intermediate speed drills for Time and Work.'
+              },
+              {
+                module: 'Seating Arrangement',
+                topic: 'Linear Row Arrangement',
+                section: 'Logical Reasoning',
+                score: 2,
+                total: 3,
+                percentage: 67,
+                accuracy: 67,
+                averageTime: 62,
+                status: 'Average',
+                recommendation: 'Solve 10 timed practice questions to push accuracy above 80%.'
+              },
+              {
+                module: 'Probability',
+                topic: 'Two Dice Sum',
+                section: 'Quantitative Aptitude',
+                score: 2,
+                total: 2,
+                percentage: 100,
+                accuracy: 100,
+                averageTime: 44,
+                status: 'Excellent',
+                recommendation: 'Mastery achieved. Maintain speed with periodic mock tests.'
+              }
+            ],
+            answers: {
+              'QA-PCT-001': { questionId: 'QA-PCT-001', selectedOption: '600', isMarkedForReview: false, timeSpentSeconds: 45 },
+              'QA-TWR-001': { questionId: 'QA-TWR-001', selectedOption: '8 days', isMarkedForReview: false, timeSpentSeconds: 60 }
+            },
+            questionIds: [
+              'QA-PCT-001', 'QA-PCT-002', 'QA-TWR-001', 'LR-BLD-001', 'LR-DIR-001', 'VA-ART-001', 'VA-TNS-001'
+            ]
+          },
+          {
+            id: 'attempt_demo_previous',
+            userId: 'usr_student_01',
+            blueprintSize: 30,
+            title: 'Initial Baseline Diagnostic (30 Questions)',
+            startedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+            submittedAt: new Date(Date.now() - 86400000 * 3 + 1800000).toISOString(),
+            totalTimeSpentSeconds: 1750,
+            totalQuestions: 30,
+            score: 15,
+            percentage: 50,
+            correctCount: 15,
+            wrongCount: 12,
+            unansweredCount: 3,
+            accuracy: 55,
+            averageTimePerQuestion: 58,
+            sectionBreakdown: [
+              { section: 'Quantitative Aptitude', score: 4, total: 10, percentage: 40, accuracy: 44, timeSpentSeconds: 700 },
+              { section: 'Logical Reasoning', score: 6, total: 10, percentage: 60, accuracy: 60, timeSpentSeconds: 580 },
+              { section: 'Verbal Ability', score: 5, total: 10, percentage: 50, accuracy: 56, timeSpentSeconds: 470 }
+            ],
+            topicBreakdown: [
+              {
+                module: 'Percentages',
+                topic: 'Basic Percentage',
+                section: 'Quantitative Aptitude',
+                score: 0,
+                total: 3,
+                percentage: 0,
+                accuracy: 0,
+                averageTime: 92,
+                status: 'Critical',
+                recommendation: 'Start Percentages Foundation Training & solve 10 guided basic practice problems.'
+              }
+            ],
+            answers: {},
+            questionIds: ['QA-PCT-001']
+          }
+        ];
+
+        localStorage.setItem(STORAGE_KEYS.ATTEMPTS, JSON.stringify(sampleAttempts));
+        return sampleAttempts.filter(a => a.userId === targetUserId);
+      }
+
+      // Strictly return attempts belonging to this user
+      return allAttempts.filter(a => a.userId === targetUserId);
     } catch {
       return [];
     }
@@ -214,9 +245,21 @@ export const storageService = {
 
   saveAttempt(attempt: AssessmentAttempt) {
     try {
-      const attempts = this.getAttempts();
-      attempts.unshift(attempt); // latest first
-      localStorage.setItem(STORAGE_KEYS.ATTEMPTS, JSON.stringify(attempts));
+      const activeUser = this.getUser();
+      if (!attempt.userId && activeUser) {
+        attempt.userId = activeUser.id;
+      }
+      const raw = localStorage.getItem(STORAGE_KEYS.ATTEMPTS);
+      let allAttempts: AssessmentAttempt[] = [];
+      if (raw) {
+        try {
+          allAttempts = JSON.parse(raw);
+        } catch {
+          allAttempts = [];
+        }
+      }
+      allAttempts.unshift(attempt); // latest first
+      localStorage.setItem(STORAGE_KEYS.ATTEMPTS, JSON.stringify(allAttempts));
       // clear session once saved
       this.clearCurrentSession();
     } catch (e) {
@@ -224,14 +267,21 @@ export const storageService = {
     }
   },
 
-  getAttemptById(id: string): AssessmentAttempt | undefined {
-    return this.getAttempts().find(a => a.id === id);
+  getAttemptById(id: string, userId?: string): AssessmentAttempt | undefined {
+    return this.getAttempts(userId).find(a => a.id === id);
   },
 
   getCurrentSession(): InProgressSession | null {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.CURRENT_SESSION);
-      return data ? JSON.parse(data) : null;
+      if (!data) return null;
+      const session: InProgressSession = JSON.parse(data);
+      const activeUser = this.getUser();
+      // Ensure the session belongs to the current active user
+      if (session.userId && activeUser && session.userId !== activeUser.id) {
+        return null;
+      }
+      return session;
     } catch {
       return null;
     }
@@ -239,6 +289,10 @@ export const storageService = {
 
   saveCurrentSession(session: InProgressSession) {
     try {
+      const activeUser = this.getUser();
+      if (!session.userId && activeUser) {
+        session.userId = activeUser.id;
+      }
       localStorage.setItem(STORAGE_KEYS.CURRENT_SESSION, JSON.stringify(session));
     } catch (e) {
       console.error('Failed to persist session', e);
@@ -250,6 +304,44 @@ export const storageService = {
       localStorage.removeItem(STORAGE_KEYS.CURRENT_SESSION);
     } catch (e) {
       console.error('Failed to clear session', e);
+    }
+  },
+
+  getModuleProgress(userId: string, moduleName: string): ModuleTrainingProgress {
+    try {
+      const key = `aptiq_module_progress_${userId}`;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const data: Record<string, ModuleTrainingProgress> = JSON.parse(raw);
+        if (data[moduleName]) {
+          return {
+            ...data[moduleName],
+            cycle: data[moduleName].cycle ?? 0
+          };
+        }
+      }
+    } catch (e) {
+      console.error('Failed to get module progress', e);
+    }
+    return {
+      module: moduleName,
+      completedStages: [],
+      testAttended: false,
+      score: 0,
+      placementTarget: 0,
+      cycle: 0
+    };
+  },
+
+  saveModuleProgress(userId: string, progress: ModuleTrainingProgress) {
+    try {
+      const key = `aptiq_module_progress_${userId}`;
+      const raw = localStorage.getItem(key);
+      const data: Record<string, ModuleTrainingProgress> = raw ? JSON.parse(raw) : {};
+      data[progress.module] = progress;
+      localStorage.setItem(key, JSON.stringify(data));
+    } catch (e) {
+      console.error('Failed to save module progress', e);
     }
   }
 };

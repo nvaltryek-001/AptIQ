@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function: Authenticated student
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // User profile documents: Students can read/write their own profile
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Question Bank Catalog: Accessible to all authenticated users
+    match /questions/{questionId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Diagnostic Assessments & Blueprints: Accessible to all authenticated users
+    match /blueprints/{blueprintId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Student Diagnostic Attempts: Students can submit and read their attempts
+    match /attempts/{attemptId} {
+      allow read, create, update: if isAuthenticated();
+    }
+
+    // Active diagnostic sessions
+    match /sessions/{sessionId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

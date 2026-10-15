@@ -1,7 +1,10 @@
 node_modules/
+dist/
+data/emailConfig.json
 .next/
 .env
 .env.local
 .env.*.local
 *.log
 .DS_Store
+

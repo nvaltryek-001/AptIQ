@@ -5,7 +5,6 @@ import {
   TrendingUp,
   BookOpen,
   ArrowRight,
-  ShieldCheck,
   CheckCircle2,
   BarChart3,
   Flame,
@@ -16,13 +15,11 @@ import {
 interface LandingPageProps {
   onStartAssessment: () => void;
   onLoginStudent: () => void;
-  onLoginAdmin: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   onStartAssessment,
-  onLoginStudent,
-  onLoginAdmin
+  onLoginStudent
 }) => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
@@ -61,14 +58,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             className="px-6 py-3.5 rounded-xl border border-slate-700 hover:bg-slate-900 active:bg-slate-800 text-slate-200 font-semibold text-sm transition-colors"
           >
             Student Login / Register
-          </button>
-
-          <button
-            onClick={onLoginAdmin}
-            className="px-6 py-3.5 rounded-xl border border-slate-800 hover:bg-slate-900/60 text-slate-400 hover:text-rose-400 font-semibold text-sm transition-colors flex items-center gap-1.5"
-          >
-            <ShieldCheck className="w-4 h-4 text-rose-400" />
-            <span>Admin Portal</span>
           </button>
         </div>
 
@@ -144,7 +133,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* Footer */}
       <footer className="border-t border-slate-900 py-6 text-center text-xs text-slate-500 font-mono">
-        AptIQ · Placement Aptitude Assessment & Targeted Diagnostics · Only Authorized Administrator Access Allowed
+        AptIQ · Placement Aptitude Assessment & Targeted Diagnostics
       </footer>
     </div>
   );

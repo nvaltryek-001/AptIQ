@@ -3,27 +3,29 @@ import { UserProfile, storageService } from './storageService.ts';
 export interface RegisteredAccount extends UserProfile {
   passwordHash: string;
   createdAt: string;
+  isEmailVerified: boolean;
 }
-
-// Master Admin configuration requested by the user
-export const MASTER_ADMIN_EMAIL = 'rajathdrajathd@gmail.com';
-export const MASTER_ADMIN_PASSWORD = 'raj.1233@4566';
 
 const STORAGE_KEYS = {
   REGISTERED_USERS: 'aptiq_registered_users',
   ACTIVE_USER: 'aptiq_user'
 };
 
-// Simple secure hash helper (SHA-256 via Web Crypto API or fast fallback)
-async function hashPassword(password: string): Promise<string> {
-  if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password + '_aptiq_salt_2026');
-    const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-  return btoa(password + '_salt');
+export interface RegistrationParams {
+  name: string;
+  email: string;
+  password: string;
+  college: string;
+  branch: string;
+  graduationYear: number;
+  targetCompany?: string;
+  targetRole?: string;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  user?: UserProfile;
+  error?: string;
 }
 
 export const authService = {
@@ -32,7 +34,11 @@ export const authService = {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.REGISTERED_USERS);
       if (data) {
-        return JSON.parse(data);
+        const users: RegisteredAccount[] = JSON.parse(data);
+        return users.map(u => ({
+          ...u,
+          isEmailVerified: true
+        }));
       }
       // Seed initial demo student
       const initialUsers: RegisteredAccount[] = [
@@ -47,7 +53,8 @@ export const authService = {
           targetCompany: 'Google / Amazon / TCS',
           targetRole: 'Software Engineer',
           passwordHash: 'Student@123',
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          isEmailVerified: true
         }
       ];
       localStorage.setItem(STORAGE_KEYS.REGISTERED_USERS, JSON.stringify(initialUsers));
@@ -58,7 +65,7 @@ export const authService = {
   },
 
   // Save registered students list
-  saveRegisteredUsers(users: RegisteredAccount[]) {
+  saveRegisteredUsers(users: RegisteredAccount[]): void {
     try {
       localStorage.setItem(STORAGE_KEYS.REGISTERED_USERS, JSON.stringify(users));
     } catch (e) {
@@ -66,56 +73,47 @@ export const authService = {
     }
   },
 
-  // Student registration
-  async registerStudent(params: {
-    name: string;
-    email: string;
-    password: string;
-    college: string;
-    branch: string;
-    graduationYear: number;
-    targetCompany?: string;
-    targetRole?: string;
-  }): Promise<{ success: boolean; user?: UserProfile; error?: string }> {
+  // Student Registration (instant login, no verification email needed)
+  async registerStudent(params: RegistrationParams, autoVerify: boolean = true): Promise<AuthResponse> {
     const cleanEmail = params.email.trim().toLowerCase();
 
-    // Prevent registering with admin email
-    if (cleanEmail === MASTER_ADMIN_EMAIL.toLowerCase()) {
-      return { success: false, error: 'This email is reserved for administration.' };
-    }
-
     if (!cleanEmail || !params.password || !params.name.trim()) {
-      return { success: false, error: 'Name, email, and password are required.' };
+      return { success: false, error: 'Full name, email, and password are required.' };
     }
 
     if (params.password.length < 6) {
       return { success: false, error: 'Password must be at least 6 characters long.' };
     }
 
-    const existingUsers = this.getRegisteredUsers();
-    const isExisting = existingUsers.some(u => u.email.toLowerCase() === cleanEmail);
-    if (isExisting) {
-      return { success: false, error: 'An account with this email already exists. Please log in.' };
+    const users = this.getRegisteredUsers();
+    const existing = users.find(u => u.email.toLowerCase() === cleanEmail);
+
+    if (existing) {
+      return {
+        success: false,
+        error: 'An account with this email already exists. Please sign in.'
+      };
     }
 
+    // Create new registered student account
     const newUser: RegisteredAccount = {
       id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       name: params.name.trim(),
       email: cleanEmail,
       role: 'student',
       college: params.college.trim() || 'Engineering College',
-      branch: params.branch.trim() || 'Computer Science',
+      branch: params.branch.trim() || 'Computer Science & Engineering',
       graduationYear: params.graduationYear || 2026,
       targetCompany: params.targetCompany?.trim(),
       targetRole: params.targetRole?.trim(),
-      passwordHash: params.password, // stored safely in user list
-      createdAt: new Date().toISOString()
+      passwordHash: params.password,
+      createdAt: new Date().toISOString(),
+      isEmailVerified: true
     };
 
-    existingUsers.push(newUser);
-    this.saveRegisteredUsers(existingUsers);
+    users.push(newUser);
+    this.saveRegisteredUsers(users);
 
-    // Set active session
     const userProfile: UserProfile = {
       id: newUser.id,
       name: newUser.name,
@@ -125,51 +123,25 @@ export const authService = {
       branch: newUser.branch,
       graduationYear: newUser.graduationYear,
       targetCompany: newUser.targetCompany,
-      targetRole: newUser.targetRole
+      targetRole: newUser.targetRole,
+      isEmailVerified: true
     };
+
+    // Set active session
     storageService.setUser(userProfile);
 
     return { success: true, user: userProfile };
   },
 
-  // Login handler for both Student and strictly controlled Admin
+  // Login handler
   async login(
     email: string,
     password: string,
-    intentRole: 'student' | 'admin' = 'student'
-  ): Promise<{ success: boolean; user?: UserProfile; error?: string }> {
+    _intentRole: 'student' | 'admin' = 'student'
+  ): Promise<AuthResponse> {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
 
-    // 1. STRICT ADMIN AUTHENTICATION CHECK
-    if (intentRole === 'admin' || cleanEmail === MASTER_ADMIN_EMAIL.toLowerCase()) {
-      // ONLY rajathdrajathd@gmail.com with exact password raj.1233@4566 can access admin panel!
-      if (cleanEmail === MASTER_ADMIN_EMAIL.toLowerCase() && cleanPassword === MASTER_ADMIN_PASSWORD) {
-        const adminUser: UserProfile = {
-          id: 'admin_master_rajath',
-          name: 'Rajath D. (Admin)',
-          email: MASTER_ADMIN_EMAIL,
-          role: 'admin',
-          college: 'AptIQ Campus Administration',
-          branch: 'Lead Placement Administrator',
-          graduationYear: 2024
-        };
-        storageService.setUser(adminUser);
-        return { success: true, user: adminUser };
-      }
-
-      if (cleanEmail === MASTER_ADMIN_EMAIL.toLowerCase()) {
-        return { success: false, error: 'Incorrect administrator password.' };
-      }
-
-      // Any other email trying to log in as admin is strictly rejected
-      return {
-        success: false,
-        error: 'Access Denied: Only authorized administrator email allowed.'
-      };
-    }
-
-    // 2. STUDENT AUTHENTICATION CHECK
     const users = this.getRegisteredUsers();
     const student = users.find(u => u.email.toLowerCase() === cleanEmail);
 
@@ -183,7 +155,7 @@ export const authService = {
     if (student.passwordHash !== cleanPassword) {
       return {
         success: false,
-        error: 'Incorrect password. Please verify your credentials.'
+        error: 'Incorrect password. Please try again.'
       };
     }
 
@@ -196,11 +168,37 @@ export const authService = {
       branch: student.branch,
       graduationYear: student.graduationYear,
       targetCompany: student.targetCompany,
-      targetRole: student.targetRole
+      targetRole: student.targetRole,
+      isEmailVerified: true
     };
 
     storageService.setUser(studentProfile);
     return { success: true, user: studentProfile };
+  },
+
+  // Toggle or force verification status
+  setUserVerificationStatus(email: string, verified: boolean): boolean {
+    const cleanEmail = email.trim().toLowerCase();
+    const users = this.getRegisteredUsers();
+    const idx = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+    if (idx !== -1) {
+      users[idx].isEmailVerified = verified;
+      this.saveRegisteredUsers(users);
+      return true;
+    }
+    return false;
+  },
+
+  // Delete student account
+  deleteStudentAccount(email: string): boolean {
+    const cleanEmail = email.trim().toLowerCase();
+    const users = this.getRegisteredUsers();
+    const filtered = users.filter(u => u.email.toLowerCase() !== cleanEmail);
+    if (filtered.length !== users.length) {
+      this.saveRegisteredUsers(filtered);
+      return true;
+    }
+    return false;
   },
 
   // Logout
@@ -209,8 +207,7 @@ export const authService = {
   },
 
   // Check if current logged-in user is verified Master Admin
-  isMasterAdmin(user?: UserProfile | null): boolean {
-    if (!user) return false;
-    return user.role === 'admin' && user.email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
+  isMasterAdmin(_user?: UserProfile | null): boolean {
+    return false;
   }
 };
