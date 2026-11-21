@@ -41,26 +41,35 @@ class FirebaseAuthService {
   // Get active config from env or localStorage
   getConfig(): FirebaseConfig | null {
     // 1. Check runtime localStorage override (configured via Admin Console)
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.FIREBASE_CONFIG);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.apiKey && parsed.authDomain && parsed.projectId) {
-          return parsed;
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEYS.FIREBASE_CONFIG);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.apiKey && parsed.authDomain && parsed.projectId) {
+            return parsed;
+          }
         }
+      } catch (e) {
+        console.warn('[AptIQ Firebase] Failed to parse stored Firebase config', e);
       }
-    } catch (e) {
-      console.warn('[AptIQ Firebase] Failed to parse stored Firebase config', e);
     }
 
-    // 2. Check import.meta.env variables
+    // 2. Check import.meta.env or process.env variables
+    const env =
+      typeof import.meta !== 'undefined' && (import.meta as any).env
+        ? (import.meta as any).env
+        : typeof process !== 'undefined' && process.env
+        ? process.env
+        : {};
+
     const envConfig: Partial<FirebaseConfig> = {
-      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-      appId: import.meta.env.VITE_FIREBASE_APP_ID
+      apiKey: env.VITE_FIREBASE_API_KEY,
+      authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+      projectId: env.VITE_FIREBASE_PROJECT_ID,
+      storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      appId: env.VITE_FIREBASE_APP_ID
     };
 
     if (envConfig.apiKey && envConfig.authDomain && envConfig.projectId) {

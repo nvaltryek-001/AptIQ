@@ -10,7 +10,7 @@ interface BlueprintSelectorProps {
 export const BlueprintSelector: React.FC<BlueprintSelectorProps> = ({ onSelectBlueprint, onCancel }) => {
   const [selectedSize, setSelectedSize] = useState<AssessmentSize>(30);
 
-  const blueprintSizes: AssessmentSize[] = [30, 60, 90, 120];
+  const blueprintSizes: AssessmentSize[] = [20, 30, 60, 90, 120];
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -29,7 +29,7 @@ export const BlueprintSelector: React.FC<BlueprintSelectorProps> = ({ onSelectBl
       </div>
 
       {/* Blueprint Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         {blueprintSizes.map((size) => {
           const bp = ASSESSMENT_BLUEPRINTS[size];
           const isSelected = selectedSize === size;

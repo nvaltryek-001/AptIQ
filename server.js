@@ -16,12 +16,35 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
-// Load question bank for backend validation
+function normalizeQuestionText(text) {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/^q\d+\s*(\[[^\]]+\]\s*:?)?\s*/i, '')
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Load question bank for backend validation with deduplication
 const questionBankPath = path.resolve(process.cwd(), 'src/data/questionBank.json');
 let questionBank = [];
 try {
   if (fs.existsSync(questionBankPath)) {
-    questionBank = JSON.parse(fs.readFileSync(questionBankPath, 'utf8'));
+    const raw = JSON.parse(fs.readFileSync(questionBankPath, 'utf8'));
+    const seenIds = new Set();
+    const seenTexts = new Set();
+    questionBank = raw.filter(q => {
+      const idKey = q.id ? q.id.trim().toLowerCase() : '';
+      const textKey = normalizeQuestionText(q.question);
+      if ((idKey && seenIds.has(idKey)) || (textKey && seenTexts.has(textKey))) {
+        return false;
+      }
+      if (idKey) seenIds.add(idKey);
+      if (textKey) seenTexts.add(textKey);
+      return true;
+    });
   }
 } catch (e) {
   console.error('[AptIQ Server] Failed to load question bank in backend', e);

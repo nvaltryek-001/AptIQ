@@ -39,6 +39,7 @@ export const AssessmentView: React.FC<AssessmentViewProps> = ({ size, onFinish, 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
   const [showMobilePalette, setShowMobilePalette] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const startTimeRef = useRef<number>(Date.now());
   const questionStartTimeRef = useRef<number>(Date.now());
@@ -65,6 +66,15 @@ export const AssessmentView: React.FC<AssessmentViewProps> = ({ size, onFinish, 
 
   // Initialize or restore assessment
   useEffect(() => {
+    // 1. Pre-test availability check (Requirement 5)
+    const availability = assessmentEngine.validateQuestionAvailability(size);
+    if (!availability.available) {
+      setErrorMessage(
+        availability.error || `Insufficient unique questions available for this ${size}-question test.`
+      );
+      return;
+    }
+
     const existingSession = storageService.getCurrentSession();
 
     if (existingSession && existingSession.blueprintSize === size && existingSession.questionIds.length > 0) {
@@ -73,35 +83,47 @@ export const AssessmentView: React.FC<AssessmentViewProps> = ({ size, onFinish, 
         .map(id => assessmentEngine.getQuestionById(id))
         .filter((q): q is AptitudeQuestion => q !== undefined);
 
-      if (loadedQuestions.length === existingSession.questionIds.length) {
+      // Verify that all questions were found AND that the session has NO duplicates
+      const uniqueLoaded = assessmentEngine.deduplicateQuestions ? assessmentEngine.deduplicateQuestions(loadedQuestions) : loadedQuestions;
+      if (
+        loadedQuestions.length === existingSession.questionIds.length &&
+        uniqueLoaded.length === loadedQuestions.length
+      ) {
         setQuestions(loadedQuestions);
         setAnswers(existingSession.answers || {});
         setCurrentIndex(existingSession.currentQuestionIndex || 0);
         startTimeRef.current = existingSession.startedAt;
         return;
+      } else {
+        // Corrupted session with duplicates or missing questions detected: clear it
+        storageService.clearCurrentSession();
       }
     }
 
-    // Otherwise generate fresh balanced assessment
-    const { questions: freshQuestions, blueprint } = assessmentEngine.generateAssessment(size);
-    const durationSec = blueprint.durationMinutes * 60;
+    // Otherwise generate fresh balanced assessment with 100% unique questions
+    try {
+      const { questions: freshQuestions, blueprint } = assessmentEngine.generateAssessment(size);
+      const durationSec = blueprint.durationMinutes * 60;
 
-    setQuestions(freshQuestions);
-    setCurrentIndex(0);
-    setAnswers({});
-    startTimeRef.current = Date.now();
+      setQuestions(freshQuestions);
+      setCurrentIndex(0);
+      setAnswers({});
+      startTimeRef.current = Date.now();
 
-    const newSession: InProgressSession = {
-      assessmentId: `session_${Date.now()}`,
-      blueprintSize: size,
-      startedAt: startTimeRef.current,
-      durationSeconds: durationSec,
-      remainingSeconds: durationSec,
-      questionIds: freshQuestions.map(q => q.id),
-      currentQuestionIndex: 0,
-      answers: {}
-    };
-    storageService.saveCurrentSession(newSession);
+      const newSession: InProgressSession = {
+        assessmentId: `session_${Date.now()}`,
+        blueprintSize: size,
+        startedAt: startTimeRef.current,
+        durationSeconds: durationSec,
+        remainingSeconds: durationSec,
+        questionIds: freshQuestions.map(q => q.id),
+        currentQuestionIndex: 0,
+        answers: {}
+      };
+      storageService.saveCurrentSession(newSession);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to generate assessment questions.');
+    }
   }, [size]);
 
   // Persist session to local storage periodically
@@ -244,6 +266,38 @@ export const AssessmentView: React.FC<AssessmentViewProps> = ({ size, onFinish, 
     onFinish(attempt);
   };
   handleFinalSubmitRef.current = handleFinalSubmit;
+
+  if (errorMessage) {
+    return (
+      <div className="flex items-center justify-center min-h-[70vh] p-4">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center space-y-4 shadow-xl">
+          <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 mx-auto flex items-center justify-center">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold text-white">Insufficient Questions Available</h2>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              {errorMessage}
+            </p>
+          </div>
+          <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-slate-400 text-xs text-left space-y-1">
+            <p className="text-slate-300 font-semibold">Test Quality Guarantee:</p>
+            <p className="text-[11px] leading-relaxed">
+              AptIQ strictly prevents repeating questions within the same assessment to protect the accuracy of student performance analysis.
+            </p>
+          </div>
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              onClick={onExit}
+              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors"
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (questions.length === 0) {
     return (

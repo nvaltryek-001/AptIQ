@@ -8,3 +8,13 @@ data/emailConfig.json
 *.log
 .DS_Store
 
+.vercel
+.env*
+
+.env
+.env.*
+!.env.example
+.vercel/
+node_modules/
+dist/
+.firebase/

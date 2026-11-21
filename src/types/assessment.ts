@@ -12,7 +12,7 @@ export interface AptitudeQuestion {
   tags: string[];
 }
 
-export type AssessmentSize = 30 | 60 | 90 | 120;
+export type AssessmentSize = 20 | 30 | 60 | 90 | 120;
 
 export interface BlueprintConfig {
   size: AssessmentSize;
@@ -27,6 +27,13 @@ export interface BlueprintConfig {
 }
 
 export const ASSESSMENT_BLUEPRINTS: Record<AssessmentSize, BlueprintConfig> = {
+  20: {
+    size: 20,
+    title: 'Diagnostic Rapid Sprint',
+    description: 'Quick-paced diagnostic test to rapidly assess core competencies and detect weaknesses.',
+    durationMinutes: 20,
+    sections: { quantitative: 7, logical: 7, verbal: 6 }
+  },
   30: {
     size: 30,
     title: 'Diagnostic Quick Sprint',
