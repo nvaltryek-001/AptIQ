@@ -1,14 +1,21 @@
 {
-  "name": "react-example",
+  "name": "aptiq",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Adaptive aptitude assessment and training platform for campus placements",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
+    "start": "node server.js",
     "build": "vite build",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "test": "node --test tests/*.test.mjs",
+    "lint": "tsc --noEmit",
+    "validate:questions": "tsx scripts/validateQuestions.ts",
+    "clean": "rm -rf dist"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

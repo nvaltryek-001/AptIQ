@@ -1,0 +1,25 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Question-bank tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: API smoke test
+        run: |
+          PORT=3101 node server.js &
+          sleep 3
+          curl -sf http://localhost:3101/api/health
+          curl -sf "http://localhost:3101/api/adaptive/question?userId=ci" | grep -q '"question"'

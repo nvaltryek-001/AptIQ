@@ -75,7 +75,9 @@ function getUserWeakTopics(userId) {
   const results = userAdaptiveResults.get(userId) || [];
   const topicStats = {};
   results.forEach(r => {
-    const key = r.topic || r.module;
+    // Aggregate by module (one of the 42 syllabus topics). The per-question `topic`
+    // label is unique to every item, so keying on it would never reach 2 attempts.
+    const key = r.module || r.topic;
     if (!topicStats[key]) topicStats[key] = { total: 0, correct: 0 };
     topicStats[key].total++;
     if (r.isCorrect) topicStats[key].correct++;
@@ -102,16 +104,16 @@ app.get('/api/adaptive/question', (req, res) => {
 
   // Prioritize weak topics (<60% accuracy)
   let servedWeakTopic = null;
-  const weakCandidates = candidates.filter(q => weakTopics.includes(q.topic) || weakTopics.includes(q.module));
+  const weakCandidates = candidates.filter(q => weakTopics.includes(q.module));
   if (weakCandidates.length > 0 && Math.random() < 0.7) {
     candidates = weakCandidates;
-    servedWeakTopic = weakCandidates[0]?.topic || weakCandidates[0]?.module || null;
   }
 
   // Exclude recent questions
   const unasked = candidates.filter(q => !state.recentQuestionIds.includes(q.id));
   const pool = unasked.length > 0 ? unasked : candidates;
   const selected = pool[Math.floor(Math.random() * pool.length)] || questionBank[0];
+  if (selected && weakTopics.includes(selected.module)) servedWeakTopic = selected.module;
 
   if (!selected) {
     return res.status(404).json({ error: 'No question available' });

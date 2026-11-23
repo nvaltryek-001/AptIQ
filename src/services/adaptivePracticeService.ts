@@ -118,7 +118,8 @@ export const adaptivePracticeService = {
     const topicStats: Record<string, { total: number; correct: number }> = {};
 
     results.forEach(r => {
-      const key = r.topic || r.module;
+      // Aggregate by module: per-question `topic` labels are unique, so they never reach 2 attempts.
+      const key = r.module || r.topic;
       if (!topicStats[key]) {
         topicStats[key] = { total: 0, correct: 0 };
       }
@@ -180,10 +181,9 @@ export const adaptivePracticeService = {
 
     // If there are weak topics and no strict module filter, or weak topic inside preferred module:
     let servedWeakTopic: string | null = null;
-    const weakCandidates = candidates.filter(q => weakTopics.includes(q.topic) || weakTopics.includes(q.module));
+    const weakCandidates = candidates.filter(q => weakTopics.includes(q.module));
     if (weakCandidates.length > 0 && Math.random() < 0.7) {
       candidates = weakCandidates;
-      servedWeakTopic = weakCandidates[0]?.topic || weakCandidates[0]?.module || null;
     }
 
     // Filter out recent questions to avoid immediate repetition
@@ -191,6 +191,7 @@ export const adaptivePracticeService = {
     const finalPool = unasked.length > 0 ? unasked : candidates;
 
     const selected = finalPool[Math.floor(Math.random() * finalPool.length)] || allQuestions[0];
+    if (selected && weakTopics.includes(selected.module)) servedWeakTopic = selected.module;
 
     // Sanitize question: STRIP correctAnswer and explanation completely before returning to UI
     const clientQuestion: ClientQuestion = {
